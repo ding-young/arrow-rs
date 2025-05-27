@@ -200,6 +200,7 @@ pub fn create_codec(codec: CodecType, _options: &CodecOptions) -> Result<Option<
 mod snappy_codec {
     use snap::raw::{decompress_len, max_compress_len, Decoder, Encoder};
 
+    use crate::arrow::my_metric::MYMETRICS;
     use crate::compression::Codec;
     use crate::errors::Result;
 
@@ -226,15 +227,22 @@ mod snappy_codec {
             output_buf: &mut Vec<u8>,
             uncompress_size: Option<usize>,
         ) -> Result<usize> {
+            let start = std::time::Instant::now();
+            
             let len = match uncompress_size {
                 Some(size) => size,
                 None => decompress_len(input_buf)?,
             };
             let offset = output_buf.len();
             output_buf.resize(offset + len, 0);
-            self.decoder
+            let result = self.decoder
                 .decompress(input_buf, &mut output_buf[offset..])
-                .map_err(|e| e.into())
+                .map_err(|e| e.into());
+            
+            let elapsed = start.elapsed();
+            // println!("Elapsed Time in decompress {:?}", elapsed);
+            MYMETRICS.add_decompress_time(elapsed); 
+            result
         }
 
         fn compress(&mut self, input_buf: &[u8], output_buf: &mut Vec<u8>) -> Result<()> {

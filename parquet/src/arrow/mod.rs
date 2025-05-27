@@ -161,6 +161,9 @@ experimental!(mod schema);
 
 use std::sync::Arc;
 
+// I added
+pub mod my_metric;
+// 
 pub use self::arrow_writer::ArrowWriter;
 #[cfg(feature = "async")]
 pub use self::async_reader::ParquetRecordBatchStreamBuilder;

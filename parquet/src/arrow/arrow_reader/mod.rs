@@ -29,6 +29,7 @@ use std::sync::Arc;
 
 pub use crate::arrow::array_reader::RowGroups;
 use crate::arrow::array_reader::{build_array_reader, ArrayReader};
+use crate::arrow::my_metric::MYMETRICS;
 use crate::arrow::schema::{parquet_to_arrow_schema_and_fields, ParquetField};
 use crate::arrow::{parquet_to_arrow_field_levels, FieldLevels, ProjectionMask};
 use crate::column::page::{PageIterator, PageReader};
@@ -770,6 +771,9 @@ impl Iterator for ParquetRecordBatchReader {
     type Item = Result<RecordBatch, ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // Overall Decoding overhead
+        let start = std::time::Instant::now();
+        
         let mut read_records = 0;
         match self.selection.as_mut() {
             Some(selection) => {
@@ -834,10 +838,17 @@ impl Iterator for ParquetRecordBatchReader {
 
                 match struct_array {
                     Err(err) => Some(Err(err)),
-                    Ok(e) => (e.len() > 0).then(|| Ok(RecordBatch::from(e))),
+                    Ok(e) => {
+                        // I added
+                        let elapsed = start.elapsed();
+                        // println!("Elapsed Time in next {:?}", elapsed);
+                        MYMETRICS.add_parquet_decode_time(elapsed); 
+                        (e.len() > 0).then(|| Ok(RecordBatch::from(e)))
+                    },
                 }
             }
         }
+
     }
 }
 
