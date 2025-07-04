@@ -18,6 +18,7 @@
 //! Contains implementations of the reader traits FileReader, RowGroupReader and PageReader
 //! Also contains implementations of the ChunkReader for files (with buffering) and byte arrays (RAM)
 
+use crate::arrow::my_metric::MYMETRICS;
 use crate::basic::{Encoding, Type};
 use crate::bloom_filter::Sbbf;
 use crate::column::page::{Page, PageMetadata, PageReader};
@@ -40,6 +41,7 @@ use crate::thrift::{TCompactSliceInputProtocol, TSerializable};
 use bytes::Bytes;
 use std::collections::VecDeque;
 use std::iter;
+use std::time::Instant;
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 use thrift::protocol::TCompactInputProtocol;
 
@@ -760,6 +762,7 @@ fn verify_page_size(
 impl<R: ChunkReader> PageReader for SerializedPageReader<R> {
     fn get_next_page(&mut self) -> Result<Option<Page>> {
         loop {
+            let io_start = Instant::now();
             let page = match &mut self.state {
                 SerializedPageReaderState::Values {
                     offset,
@@ -835,6 +838,9 @@ impl<R: ChunkReader> PageReader for SerializedPageReader<R> {
                         buffer
                     };
 
+                    // stop timer right before decode_page
+                    MYMETRICS.add_page_io_time(io_start.elapsed());
+
                     let page = decode_page(
                         header,
                         Bytes::from(buffer),
@@ -870,6 +876,10 @@ impl<R: ChunkReader> PageReader for SerializedPageReader<R> {
                     let offset = buffer.len() - prot.as_slice().len();
 
                     let bytes = buffer.slice(offset..);
+
+                    // stop timer right before decode_page
+                    MYMETRICS.add_page_io_time(io_start.elapsed());
+
                     decode_page(
                         header,
                         bytes,
@@ -892,6 +902,7 @@ impl<R: ChunkReader> PageReader for SerializedPageReader<R> {
                 ..
             } => {
                 loop {
+                    let io_start = Instant::now();
                     if *remaining_bytes == 0 {
                         return Ok(None);
                     }
@@ -906,6 +917,11 @@ impl<R: ChunkReader> PageReader for SerializedPageReader<R> {
                     } else {
                         let mut read = self.reader.get_read(*offset as u64)?;
                         let (header_len, header) = read_page_header_len(&mut read)?;
+
+                        // maybe just add the time outside the loop?
+                        // stop timer right before decode_page
+                        MYMETRICS.add_page_io_time(io_start.elapsed());
+
                         verify_page_header_len(header_len, *remaining_bytes)?;
                         *offset += header_len;
                         *remaining_bytes -= header_len;
@@ -950,6 +966,7 @@ impl<R: ChunkReader> PageReader for SerializedPageReader<R> {
     }
 
     fn skip_next_page(&mut self) -> Result<()> {
+        let io_start = Instant::now();
         match &mut self.state {
             SerializedPageReaderState::Values {
                 offset,
@@ -969,6 +986,10 @@ impl<R: ChunkReader> PageReader for SerializedPageReader<R> {
                 } else {
                     let mut read = self.reader.get_read(*offset as u64)?;
                     let (header_len, header) = read_page_header_len(&mut read)?;
+
+                    // stop timer right before decode_page
+                    MYMETRICS.add_page_io_time(io_start.elapsed());
+
                     verify_page_header_len(header_len, *remaining_bytes)?;
                     verify_page_size(
                         header.compressed_page_size,

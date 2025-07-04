@@ -771,9 +771,9 @@ impl Iterator for ParquetRecordBatchReader {
     type Item = Result<RecordBatch, ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Overall Decoding overhead
+        // Overall Decoding overhead. This may include I/O T.T
         let start = std::time::Instant::now();
-        
+
         let mut read_records = 0;
         match self.selection.as_mut() {
             Some(selection) => {
@@ -842,13 +842,13 @@ impl Iterator for ParquetRecordBatchReader {
                         // I added
                         let elapsed = start.elapsed();
                         // println!("Elapsed Time in next {:?}", elapsed);
-                        MYMETRICS.add_parquet_decode_time(elapsed); 
+                        // MYMETRICS.add_parquet_decode_time(elapsed);
+                        MYMETRICS.add_decode_time(elapsed);
                         (e.len() > 0).then(|| Ok(RecordBatch::from(e)))
-                    },
+                    }
                 }
             }
         }
-
     }
 }
 

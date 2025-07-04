@@ -356,6 +356,8 @@ mod tests {
         )
         .unwrap();
 
+        dbg!(&fields);
+
         let array_reader = build_array_reader(fields.as_ref(), &mask, &file_reader).unwrap();
 
         // Create arrow types

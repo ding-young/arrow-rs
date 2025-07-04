@@ -473,6 +473,7 @@ mod lz4_codec {
             output_buf: &mut Vec<u8>,
             _uncompress_size: Option<usize>,
         ) -> Result<usize> {
+            let start = std::time::Instant::now();
             let mut decoder = lz4_flex::frame::FrameDecoder::new(input_buf);
             let mut buffer: [u8; LZ4_BUFFER_SIZE] = [0; LZ4_BUFFER_SIZE];
             let mut total_len = 0;
@@ -535,6 +536,8 @@ mod zstd_codec {
             output_buf: &mut Vec<u8>,
             _uncompress_size: Option<usize>,
         ) -> Result<usize> {
+            let start = std::time::Instant::now();
+            // TODO
             let mut decoder = zstd::Decoder::new(input_buf)?;
             match io::copy(&mut decoder, output_buf) {
                 Ok(n) => Ok(n as usize),
@@ -608,7 +611,8 @@ mod lz4_raw_codec {
             input_buf: &[u8],
             output_buf: &mut Vec<u8>,
             uncompress_size: Option<usize>,
-        ) -> Result<usize> {
+        ) -> Result<usize> { 
+            let start = std::time::Instant::now();
             let offset = output_buf.len();
             let required_len = match uncompress_size {
                 Some(uncompress_size) => uncompress_size,
