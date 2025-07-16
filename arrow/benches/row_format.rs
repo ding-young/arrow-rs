@@ -32,6 +32,16 @@ use arrow_array::Array;
 use criterion::Criterion;
 use std::{hint, sync::Arc};
 
+#[cfg(feature = "jemalloc")]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+#[cfg(feature = "jemalloc")]
+use tikv_jemalloc_ctl::{epoch, stats};
+
+
 fn do_bench(c: &mut Criterion, name: &str, cols: Vec<ArrayRef>) {
     let fields: Vec<_> = cols
         .iter()
@@ -52,9 +62,14 @@ fn do_bench(c: &mut Criterion, name: &str, cols: Vec<ArrayRef>) {
         b.iter(|| hint::black_box(converter.convert_columns(&cols).unwrap()));
     });
 
+    // println!("before convert_rows");
+    // print_jemalloc_stat(); 
     c.bench_function(&format!("convert_rows {name}"), |b| {
         b.iter(|| hint::black_box(converter.convert_rows(&rows).unwrap()));
     });
+
+    // println!("after convert_rows");
+    // print_jemalloc_stat(); 
 
     let mut rows = converter.empty_rows(0, 0);
     c.bench_function(&format!("append_rows {name}"), |b| {
@@ -182,5 +197,27 @@ fn row_bench(c: &mut Criterion) {
     bench_iter(c);
 }
 
+fn print_jemalloc_stat() {
+    #[cfg(feature = "jemalloc")]
+    {
+        // Obtain a MIB for the `epoch`, `stats.allocated`, and
+        // `atats.resident` keys:
+        let e = epoch::mib().unwrap();
+        let allocated = stats::allocated::mib().unwrap();
+        let resident = stats::resident::mib().unwrap();
+        let active = stats::active::mib().unwrap();
+
+        // Many statistics are cached and only updated
+        // when the epoch is advanced:
+        e.advance().unwrap();
+
+        // Read statistics using MIB key:
+        let allocated = allocated.read().unwrap() as f64;
+        let resident = resident.read().unwrap() as f64;
+        let active = active.read().unwrap() as f64;
+
+        println!("NATIVE_MEMORY_JEMALLOC: {{ allocated: {allocated}, resident: {resident} , active: {active}}}");
+    }
+}
 criterion_group!(benches, row_bench);
 criterion_main!(benches);

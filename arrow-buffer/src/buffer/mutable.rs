@@ -191,6 +191,7 @@ impl MutableBuffer {
     pub fn reserve(&mut self, additional: usize) {
         let required_cap = self.len + additional;
         if required_cap > self.layout.size() {
+            println!("reallocate happend");
             let new_capacity = bit_util::round_upto_multiple_of_64(required_cap);
             let new_capacity = std::cmp::max(new_capacity, self.layout.size() * 2);
             self.reallocate(new_capacity)

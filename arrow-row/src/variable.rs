@@ -44,6 +44,9 @@ pub const EMPTY_SENTINEL: u8 = 1;
 /// Indicates a non-empty string
 pub const NON_EMPTY_SENTINEL: u8 = 2;
 
+#[cfg(feature = "jemalloc")]
+use tikv_jemalloc_ctl::{epoch, stats};
+
 /// Returns the length of the encoded representation of a byte array, including the null byte
 #[inline]
 pub fn encoded_len(a: Option<&[u8]>) -> usize {
@@ -412,10 +415,59 @@ pub unsafe fn decode_string_view(
     options: SortOptions,
     validate_utf8: bool,
 ) -> StringViewArray {
+    // memory before
+    // println!("before decode_binary_view");
+    // print_mem();
+    let before = print_jemalloc_stat();
+
     let view = if !validate_utf8 {
         decode_binary_view_inner_utf8_unchecked(rows, options)
     } else {
         decode_binary_view_inner(rows, options, validate_utf8)
     };
+    // memory after
+    // println!("after decode_binary_view");
+    // print_mem();
+    let after = print_jemalloc_stat();
+    let diff = after.zip(before).map(|((ax, ay, az), (bx, by, bz))| (ax - bx, ay - by, az - bz));
+    if let Some((alloc, res, active)) = diff {
+        println!("alloc: {alloc} res: {res} active: {active}");
+    }
+
     view.to_string_view_unchecked()
+}
+
+fn print_mem() {
+    let pid = std::process::id();
+    let process = procfs::process::Process::new(pid as i32).unwrap();
+    let statm = process.statm().unwrap();
+    let status = process.status().unwrap();
+    println!(
+        "vmpeak:{:?}kB, vmhwm:{:?}kB, resident:{:?}pages",
+        status.vmpeak, status.vmhwm, statm.resident
+    );
+}
+
+pub fn print_jemalloc_stat() -> Option<(f64, f64, f64)> {
+    #[cfg(feature = "jemalloc")]
+    {
+        // Obtain a MIB for the `epoch`, `stats.allocated`, and
+        // `atats.resident` keys:
+        let e = epoch::mib().unwrap();
+        let allocated = stats::allocated::mib().unwrap();
+        let resident = stats::resident::mib().unwrap();
+        let active = stats::active::mib().unwrap();
+
+        // Many statistics are cached and only updated
+        // when the epoch is advanced:
+        e.advance().unwrap();
+
+        // Read statistics using MIB key:
+        let allocated = allocated.read().unwrap() as f64;
+        let resident = resident.read().unwrap() as f64;
+        let active = active.read().unwrap() as f64;
+        // println!("NATIVE_MEMORY_JEMALLOC: {{ allocated: {allocated}, resident: {resident} , active: {active}}}");
+        return Some((allocated, resident, active));
+    }
+    None
 }
